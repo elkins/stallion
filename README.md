@@ -13,9 +13,12 @@
 - ✅ **Active maintenance** - This fork is actively maintained
 
 ## 🚀 Quick Start
+
 ```bash
 pip install git+https://github.com/elkins/stallion.git@python3-modernization
 python -m stallion.main
+```
+
 🔧 For Original Stallion Users
 If you're coming from the original Stallion, everything works exactly the same - just with modern Python support!
 
