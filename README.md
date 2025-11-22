@@ -1,9 +1,25 @@
-# Stallion
+# Stallion - Python 3 Modernized Fork
 
-Stallion is a Python Package Manager interface created to provide an "easy-to-use" visual and also
-a command-line interface for Pythonistas. Today we have many nice distribution utilities like pip,
-distribute, etc, but we don't have a nice visual approach to inspect current installed packages,
-show projects metadata, check for PyPI updates, etc. 
+🚀 **A fully modernized Stallion Python Package Manager that works with Python 3.8+**
+
+> This is a maintained fork of the original Stallion project, which was abandoned in 2014. All the original functionality works with current Python versions and modern packaging standards.
+
+## ✨ What's New
+- ✅ **Python 3.8-3.13+ compatible** - No more deprecation warnings!
+- ✅ **Modern packaging APIs** - Uses `importlib.metadata` instead of deprecated `pkg_resources`
+- ✅ **Updated PyPI integration** - Uses modern JSON API instead of deprecated XML-RPC
+- ✅ **Full backward compatibility** - All original templates and interfaces work unchanged
+- ✅ **Enhanced robustness** - Better error handling and debug logging
+- ✅ **Active maintenance** - This fork is actively maintained
+
+## 🚀 Quick Start
+```bash
+pip install git+https://github.com/elkins/stallion.git@python3-modernization
+python -m stallion.main
+🔧 For Original Stallion Users
+If you're coming from the original Stallion, everything works exactly the same - just with modern Python support!
+
+Original Stallion • Report Issue
 
 ## Screenshots
 
