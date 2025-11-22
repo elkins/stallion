@@ -9,6 +9,9 @@
 ==================================================================
 """
 import warnings
+
+import requests
+
 # Suppress pkg_resources and other deprecation warnings
 warnings.filterwarnings('ignore', category=UserWarning, message='.*pkg_resources is deprecated.*')
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -43,8 +46,8 @@ from stallion import metadata
 
 app = Flask(__name__)
 
-# Updated to modern PyPI URL
-PYPI_XMLRPC = 'https://pypi.org/pypi'
+# Change from XML-RPC to base URL
+PYPI_BASE_URL = 'https://pypi.org'
 
 # This is a cache with flags to show if a distribution has an update available
 DIST_PYPI_CACHE = set()
@@ -89,72 +92,93 @@ def get_shared_data():
 
 
 def get_pypi_proxy():
-    """ Returns a RPC ServerProxy object pointing to the PyPI RPC URL.
-
-    :rtype: xmlrpclib.ServerProxy
-    :return: the RPC ServerProxy to PyPI repository.
-    """
-    print("DEBUG: Creating PyPI RPC proxy")
-    try:
-        return xmlrpclib.ServerProxy(PYPI_XMLRPC)
-    except Exception as e:
-        print(f"DEBUG: Error creating PyPI proxy: {e}")
-        raise
+    """Legacy function - kept for compatibility but not used"""
+    print("DEBUG: XML-RPC proxy requested but deprecated")
+    # Return a dummy object that won't crash if called
+    class DummyProxy:
+        def package_releases(self, *args, **kwargs):
+            raise Exception("XML-RPC API deprecated - use JSON API instead")
+        def search(self, *args, **kwargs):
+            raise Exception("XML-RPC API deprecated - use JSON API instead")
+    return DummyProxy()
 
 
 def get_pypi_releases(dist_name):
-    """ Return the releases available at PyPI repository and sort them using
-    the packaging.version, the latest version is on the 0 index.
+    """Modern replacement using PyPI JSON API instead of deprecated XML-RPC"""
+    print(f"DEBUG: Getting PyPI releases for {dist_name} using JSON API")
 
-    :param dist_name: the distribution name
-    :rtype: list
-    :return: a list with the releases available at PyPI
-    """
-    print(f"DEBUG: Getting PyPI releases for {dist_name}")
     try:
-        pypi = get_pypi_proxy()
-        show_hidden = True
-        ret = pypi.package_releases(dist_name, show_hidden)
+        # Use PyPI's JSON API
+        url = f"https://pypi.org/pypi/{dist_name}/json"
+        response = requests.get(url)
 
-        if not ret:
-            print(f"DEBUG: No releases found for {dist_name}, trying capitalized")
-            ret = pypi.package_releases(dist_name.capitalize(), show_hidden)
+        if response.status_code == 404:
+            print(f"DEBUG: Package {dist_name} not found on PyPI")
+            return []
+        elif response.status_code != 200:
+            print(f"DEBUG: PyPI API error for {dist_name}: {response.status_code}")
+            return []
 
-        if ret:
-            ret.sort(key=lambda v: parse_version(v), reverse=True)
-            print(f"DEBUG: Found {len(ret)} releases for {dist_name}, latest: {ret[0]}")
+        data = response.json()
+        releases = list(data.get('releases', {}).keys())
+
+        # Filter out pre-releases and sort properly
+        stable_releases = []
+        for release in releases:
+            # Skip pre-releases, betas, etc.
+            if not any(identifier in release for identifier in ['a', 'b', 'rc', 'dev']):
+                stable_releases.append(release)
+
+        if stable_releases:
+            stable_releases.sort(key=lambda v: parse_version(v), reverse=True)
+            print(f"DEBUG: Found {len(stable_releases)} stable releases for {dist_name}, latest: {stable_releases[0]}")
+            return stable_releases
         else:
-            print(f"DEBUG: No releases found for {dist_name}")
+            # Fallback to all releases if no stable ones found
+            releases.sort(key=lambda v: parse_version(v), reverse=True)
+            print(f"DEBUG: Found {len(releases)} releases for {dist_name}, latest: {releases[0]}")
+            return releases
 
-        return ret
     except Exception as e:
         print(f"DEBUG: Error getting PyPI releases for {dist_name}: {e}")
         return []
 
 
 def get_pypi_search(spec, operator='or'):
-    """Search the package database using the indicated search spec
-
-    The spec may include any of the keywords described in the above list
-    (except 'stable_version' and 'classifiers'), for example: {'description': 'spam'}
-    will search description fields. Within the spec, a field's value can be a string
-    or a list of strings (the values within the list are combined with an OR), for
-    example: {'name': ['foo', 'bar']}. Valid keys for the spec dict are listed here.
-
-    name, version, author, author_email, maintainer, maintainer_email,
-    home_page, license, summary, description, keywords, platform, download_url
-    """
+    """Modern replacement using PyPI JSON search API"""
     print(f"DEBUG: Searching PyPI with spec: {spec}")
+
     try:
-        pypi = get_pypi_proxy()
-        ret = pypi.search(spec, operator)
-        ret.sort(key=lambda v: v.get('_pypi_ordering', 0), reverse=True)
-        print(f"DEBUG: Found {len(ret)} search results")
-        return ret
+        # PyPI's JSON search API
+        url = "https://pypi.org/search/"
+        params = {
+            'q': spec.get('name', '') if isinstance(spec, dict) else spec,
+            'format': 'json'
+        }
+
+        response = requests.get(url, params=params)
+        if response.status_code != 200:
+            print(f"DEBUG: PyPI search API error: {response.status_code}")
+            return []
+
+        data = response.json()
+        results = []
+
+        for item in data.get('results', []):
+            results.append({
+                'name': item.get('name', ''),
+                'version': item.get('version', ''),
+                'summary': item.get('summary', ''),
+                '_pypi_ordering': item.get('score', 0)
+            })
+
+        results.sort(key=lambda v: v['_pypi_ordering'], reverse=True)
+        print(f"DEBUG: Found {len(results)} search results")
+        return results
+
     except Exception as e:
         print(f"DEBUG: Error searching PyPI: {e}")
         return []
-
 
 @app.route('/pypi/check_update/<dist_name>')
 def check_pypi_update(dist_name):
