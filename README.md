@@ -2,7 +2,7 @@
 
 🚀 **A fully modernized Stallion Python Package Manager that works with Python 3.8+**
 
-> This is a maintained fork of the original Stallion project, which was abandoned in 2014. All the original functionality works with current Python versions and modern packaging standards.
+> This is a fork of the original Stallion project. All the original functionality works with current Python versions and modern packaging standards.
 
 ## ✨ What's New
 - ✅ **Python 3.8-3.13+ compatible** - No more deprecation warnings!
@@ -10,7 +10,6 @@
 - ✅ **Updated PyPI integration** - Uses modern JSON API instead of deprecated XML-RPC
 - ✅ **Full backward compatibility** - All original templates and interfaces work unchanged
 - ✅ **Enhanced robustness** - Better error handling and debug logging
-- ✅ **Active maintenance** - This fork is actively maintained
 
 ## 🚀 Quick Start
 
