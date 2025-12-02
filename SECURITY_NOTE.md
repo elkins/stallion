@@ -2,31 +2,21 @@
 
 ## JavaScript Dependencies
 
-### jQuery Version
-The project currently uses jQuery 1.7.1 (released 2011), which has known security vulnerabilities including:
+### jQuery Version - ✅ FIXED
+**Status**: Updated from jQuery 1.7.1 to jQuery 3.7.1 (latest stable)
+
+The project previously used jQuery 1.7.1 (released 2011), which had known security vulnerabilities including:
 - XSS vulnerabilities (CVE-2015-9251, CVE-2019-11358, CVE-2020-11022, CVE-2020-11023)
 - Prototype pollution issues
 
-**Recommendation**: Update to jQuery 3.7.x or later, which includes security fixes.
+**Current Version**: jQuery 3.7.1 (Dec 2024) - All known vulnerabilities patched
+**jQuery UI Version**: 1.14.1 (latest stable)
 
-### Upgrade Path
-To upgrade jQuery:
-
-1. Replace `stallion/static/jquery-1.7.1.min.js` with a modern version
-2. Replace `stallion/static/jquery-ui-1.8.16.custom.min.js` with a compatible version
-3. Update template references in `stallion/templates/*.html`
-4. Test all interactive features:
-   - Package search/filtering
-   - AJAX updates for PyPI version checks
-   - UI interactions
-
-### CDN Alternative
-Consider using a CDN for jQuery to automatically get security updates:
-```html
-<script src="https://code.jquery.com/jquery-3.7.1.min.js" 
-        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" 
-        crossorigin="anonymous"></script>
-```
+### Files Updated:
+- `stallion/static/jquery-3.7.1.min.js` (87 KB)
+- `stallion/static/jquery-ui-1.14.1.min.js` (253 KB)
+- `stallion/static/jquery-ui-1.14.1.min.css` (30 KB)
+- `stallion/templates/main.html` (references updated)
 
 ## Network Security
 
