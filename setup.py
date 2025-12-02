@@ -50,6 +50,12 @@ setup(
       'stallion': ['static/*.*', 'templates/*.*'],
     },
     install_requires=install_requirements,
+    extras_require={
+        'dev': [
+            'pytest>=6.0',
+            'pytest-cov>=2.0',
+        ]
+    },
     tests_require=['nose'],
     test_suite='nose.collector',
     classifiers=[
