@@ -1,7 +1,11 @@
-"""
+"""Package metadata parsing module.
+
+This module handles parsing of Python package metadata in various formats
+(PEP-241, PEP-314, PEP-345) from PKG-INFO files.
+
 .. module:: metadata
    :platform: Unix, Windows
-   :synopsis: Pacakge metadata parsing.
+   :synopsis: Package metadata parsing.
 
 .. moduleauthor:: Christian S. Perone <christian.perone@gmail.com>
 
@@ -11,6 +15,7 @@
 
 import string
 from email.parser import Parser
+from typing import Tuple, Set, Dict, Any, List, Union
 import pkg_resources
 
 # Tuple metadata format
@@ -63,27 +68,32 @@ HEADER_META = {
 METADATA_NAME = 'PKG-INFO'
 
 
-def parse_metadata(metadata):
-    """ Parse the package PKG-INFO metadata. Currently supports versions 1.0 (PEP-0241),
-    1.1 (PEP-0314), 1.2 (PEP-0345).
+def parse_metadata(metadata: str) -> Tuple[Any, Set[str]]:
+    """Parse the package PKG-INFO metadata.
+    
+    Currently supports versions 1.0 (PEP-0241), 1.1 (PEP-0314), 1.2 (PEP-0345).
 
     :param metadata: the raw PKG-INFO metadata text
     :type metadata: string
     :rtype: tuple
-    :return: (parsed_metadata, key_known), the parsed_metadata is the rfc822.Message
+    :return: (parsed_metadata, key_known), the parsed_metadata is the Message
              object and the key_known is the fields found in the metadata info which
              is part of the metadata version specification
     """
     parsed_metadata = Parser().parsestr(metadata)
-    metadata_spec = set(HEADER_META[parsed_metadata['metadata-version']])
+    # Default to version 1.0 if metadata-version is not specified
+    metadata_version = parsed_metadata.get('metadata-version', '1.0')
+    metadata_spec = set(HEADER_META.get(metadata_version, HEADER_META['1.0']))
     key_exist = set([s.lower() for s in parsed_metadata.keys()])
     return (parsed_metadata, key_exist.intersection(metadata_spec))
 
 
-def clean_lead_ws_description(metadata, field_name):
-    """ Sometimes the metadata fields are a mess, this function is intended to remove the leading
-    extra space some authors add in front of the 'description' field and to handle some other
-    field cases.
+def clean_lead_ws_description(metadata: str, field_name: str) -> str:
+    """Remove leading whitespace from metadata fields.
+    
+    Sometimes the metadata fields are a mess, this function is intended to remove
+    the leading extra space some authors add in front of the 'description' field
+    and to handle some other field cases.
 
     :param metadata: the metadata text
     :param field_name: the name of the field, like 'description'
@@ -107,12 +117,12 @@ def clean_lead_ws_description(metadata, field_name):
         return ' '.join([line.strip() for line in metadata.splitlines()])
 
 
-def field_process(field_name, field_value):
-    """ Processes a field, it changes the 'UNKNOWN' values for None, clear leading whitespaces, etc.
+def field_process(field_name: str, field_value: Union[str, List[str]]) -> Union[str, List[str], Dict[str, Any], None]:
+    """Process a field: change 'UNKNOWN' values to None, clear leading whitespaces, etc.
 
     :param field_name: the field name
     :param field_value: the value of the field
-    :rtype: string or list
+    :rtype: string or list or dict or None
     :return: field value processed
     """
 
@@ -148,11 +158,14 @@ def field_process(field_name, field_value):
     return f_value
 
 
-def metadata_to_dict(parsed_metadata, key_known):
-    """ This is the main function used to process the parsed metadata into a structured
+def metadata_to_dict(parsed_metadata: Any, key_known: Set[str]) -> Dict[str, Any]:
+    """Process the parsed metadata into a structured dictionary.
+    
+    This is the main function used to process the parsed metadata into a structured
     and pre-processed data dictionary.
 
-    :param parsed_metadata: the return of the function :func:`stallion.metadata.parse_metadata`.
+    :param parsed_metadata: the Message object from :func:`stallion.metadata.parse_metadata`.
+    :param key_known: the set of known keys from parse_metadata
     :rtype: dictionary
     :returns: the processed metadata dictionary
     """

@@ -9,16 +9,15 @@
 ==================================================================
 '''
 import stallion
-from stallion.main import get_shared_data, get_pkg_res
-from stallion.main import get_pypi_search, get_pypi_releases
+from stallion.main import get_shared_data
+from stallion.main import get_pypi_releases
 from stallion import metadata
+from stallion.compat import get_distribution, working_set, parse_version, iter_entry_points
 
 from docopt import docopt
 
 from colorama import init
 from colorama import Fore, Back, Style
-
-import pkg_resources
 
 def ellipsize(msg, max_size=80):
     '''This function will ellipsize the string.
@@ -100,10 +99,10 @@ def cmd_show(args, short=False):
     proj_name = args['<project_name>']
 
     try:
-        pkg_dist = get_pkg_res().get_distribution(proj_name)
+        pkg_dist = get_distribution(proj_name)
     except:
-        print Fore.RED + Style.BRIGHT + \
-            'Error: unable to locate the project \'%s\' !' % proj_name
+        print(Fore.RED + Style.BRIGHT +
+            'Error: unable to locate the project \'%s\' !' % proj_name)
         raise RuntimeError('Project not found !')
 
     pkg_metadata = pkg_dist.get_metadata(metadata.METADATA_NAME)
@@ -112,11 +111,11 @@ def cmd_show(args, short=False):
 
     proj_head = Fore.GREEN + Style.BRIGHT + pkg_dist.project_name
     proj_head += Fore.YELLOW + Style.BRIGHT + ' ' + pkg_dist.version
-    print proj_head,
+    print(proj_head, end=' ')
 
     proj_sum = Fore.WHITE + Style.DIM
     proj_sum += '- ' + parse_dict(distinfo, 'summary', True)
-    print proj_sum
+    print(proj_sum)
 
     # Remove long fields and used fields
     if 'description' in distinfo:
@@ -137,22 +136,22 @@ def cmd_show(args, short=False):
         del distinfo['classifier']
 
     for key in distinfo:
-        print get_field_formatted(distinfo, key)
+        print(get_field_formatted(distinfo, key))
 
     if short:
         return
 
-    print
-    print get_kv_colored('location', pkg_dist.location)
+    print()
+    print(get_kv_colored('location', pkg_dist.location))
     requires = pkg_dist.requires()
 
     if len(requires) == 0:
-        print get_kv_colored('requires', 'none')
+        print(get_kv_colored('requires', 'none'))
     else:
         req_text = '\n'
         for req in requires:
             req_text += ' '*4 + str(req) + '\n'
-        print get_kv_colored('requires', req_text)
+        print(get_kv_colored('requires', req_text))
 
     entry_points = pkg_dist.get_entry_map()
     console_scripts = entry_points.get('console_scripts')
@@ -166,39 +165,40 @@ def cmd_show(args, short=False):
             console_scr_text += ' -> ' + Fore.GREEN + Style.BRIGHT + \
                 entry.module_name + ':' + ','.join(entry.attrs) + '\n'
 
-        print console_scr_text
+        print(console_scr_text)
 
     if classifier:
         distinfo['classifier'] = classifier
-        print get_field_formatted(distinfo, 'classifier')
+        print(get_field_formatted(distinfo, 'classifier'))
 
 def cmd_list_detail(dist, distinfo):
     proj_head = Fore.GREEN + Style.BRIGHT + dist.project_name
     proj_head += Fore.YELLOW + Style.BRIGHT + ' ' + dist.version
-    print proj_head,
+    print(proj_head, end=' ')
 
     proj_sum = Fore.WHITE + Style.DIM
     proj_sum += '- ' + parse_dict(distinfo, 'summary', True)
-    print proj_sum
+    print(proj_sum)
 
-    print get_field_formatted(distinfo, 'Author'),
+    print(get_field_formatted(distinfo, 'Author'), end=' ')
     author_email = distinfo.get('author-email')
     if author_email:
-        print '<%s>' % author_email
-    else: print
+        print('<%s>' % author_email)
+    else:
+        print()
 
-    print get_field_formatted(distinfo, 'Home-page')
-    print get_field_formatted(distinfo, 'License')
-    print get_field_formatted(distinfo, 'Platform')
+    print(get_field_formatted(distinfo, 'Home-page'))
+    print(get_field_formatted(distinfo, 'License'))
+    print(get_field_formatted(distinfo, 'Platform'))
 
 def cmd_list_compact(dist, distinfo):
     proj_head = Fore.GREEN + Style.BRIGHT + dist.project_name.ljust(25)
     proj_head += Fore.WHITE + Style.BRIGHT + ' ' + dist.version.ljust(12)
-    print proj_head,
+    print(proj_head, end=' ')
 
     proj_sum = Fore.WHITE + Style.DIM
     proj_sum += ' ' + parse_dict(distinfo, 'summary', True)
-    print proj_sum.ljust(100)
+    print(proj_sum.ljust(100))
 
 def cmd_list(args):
     '''This function implements the package list command.
@@ -210,16 +210,16 @@ def cmd_list(args):
     distributions = get_shared_data()['distributions']
 
     if compact:
-        print Fore.YELLOW + Style.BRIGHT + \
-            'Project Name'.ljust(26) + 'Version'.ljust(14) + 'Summary'
-        print '-' * 80
+        print(Fore.YELLOW + Style.BRIGHT +
+            'Project Name'.ljust(26) + 'Version'.ljust(14) + 'Summary')
+        print('-' * 80)
     
     for dist in distributions:
         if filt:
             if filt.lower() not in dist.project_name.lower():
                 continue
 
-        pkg_dist = get_pkg_res().get_distribution(dist.key)
+        pkg_dist = get_distribution(dist.key)
         pkg_metadata = pkg_dist.get_metadata(metadata.METADATA_NAME)
         parsed, key_known = metadata.parse_metadata(pkg_metadata)
         distinfo = metadata.metadata_to_dict(parsed, key_known)
@@ -233,16 +233,16 @@ def cmd_check(args):
     proj_name = args['<project_name>']
     cmd_show(args, short=True)
 
-    print
-    print Fore.GREEN + Style.BRIGHT + 'Searching for updates on PyPI...'
-    print
+    print()
+    print(Fore.GREEN + Style.BRIGHT + 'Searching for updates on PyPI...')
+    print()
 
-    pkg_dist_version = get_pkg_res().get_distribution(proj_name).version
+    pkg_dist_version = get_distribution(proj_name).version
     pypi_rel = get_pypi_releases(proj_name)
 
     if pypi_rel:
-        pypi_last_version = get_pkg_res().parse_version(pypi_rel[0])
-        current_version = get_pkg_res().parse_version(pkg_dist_version)
+        pypi_last_version = parse_version(pypi_rel[0])
+        current_version = parse_version(pkg_dist_version)
 
         try:
             version_index = pypi_rel.index(pkg_dist_version)
@@ -250,57 +250,57 @@ def cmd_check(args):
             version_index = len(pypi_rel)
         
         for version in pypi_rel[0:version_index+3]:
-            print Fore.WHITE + Style.BRIGHT + '  Version %s' % version,
+            print(Fore.WHITE + Style.BRIGHT + '  Version %s' % version, end=' ')
             if version==pypi_rel[0]:
-                print Fore.BLUE + Style.BRIGHT + '[last version]',
+                print(Fore.BLUE + Style.BRIGHT + '[last version]', end=' ')
 
             if version==pkg_dist_version:
-                print Fore.GREEN + Style.BRIGHT + '[your version]',
+                print(Fore.GREEN + Style.BRIGHT + '[your version]', end=' ')
 
-            print
+            print()
 
-        print
+        print()
 
         if pypi_last_version > current_version:
-            print Fore.RED + Style.BRIGHT + \
-                '  Your version is outdated, you\'re using ' + \
-                Fore.WHITE + Style.BRIGHT + 'v.%s,' % pkg_dist_version + \
-                Fore.RED + Style.BRIGHT + \
-                ' but the last version is ' + Fore.WHITE + Style.BRIGHT + \
-                'v.%s !' % pypi_rel[0]
+            print(Fore.RED + Style.BRIGHT +
+                '  Your version is outdated, you\'re using ' +
+                Fore.WHITE + Style.BRIGHT + 'v.%s,' % pkg_dist_version +
+                Fore.RED + Style.BRIGHT +
+                ' but the last version is ' + Fore.WHITE + Style.BRIGHT +
+                'v.%s !' % pypi_rel[0])
 
         if pypi_last_version == current_version:
-            print Fore.GREEN + Style.BRIGHT + '  Your version is updated !'
+            print(Fore.GREEN + Style.BRIGHT + '  Your version is updated !')
 
         if pypi_last_version < current_version:
-            print Fore.YELLOW + Style.BRIGHT + \
-                '  Your version newer than the version available at PyPI !'
+            print(Fore.YELLOW + Style.BRIGHT +
+                '  Your version newer than the version available at PyPI !')
 
-            print Fore.YELLOW + Style.BRIGHT + '  You\'re using ' + \
-                Fore.WHITE + Style.BRIGHT + 'v.%s,' % pkg_dist_version + \
-                Fore.YELLOW + Style.BRIGHT + \
-                ' but the last version in PyPI ' + Fore.WHITE + Style.BRIGHT + \
-                'v.%s !' % pypi_rel[0]
+            print(Fore.YELLOW + Style.BRIGHT + '  You\'re using ' +
+                Fore.WHITE + Style.BRIGHT + 'v.%s,' % pkg_dist_version +
+                Fore.YELLOW + Style.BRIGHT +
+                ' but the last version in PyPI ' + Fore.WHITE + Style.BRIGHT +
+                'v.%s !' % pypi_rel[0])
 
            
     else:
-        print 'No versions found on PyPI !'
+        print('No versions found on PyPI !')
 
 def cmd_scripts(arguments):
     filt = arguments['<filter>']
 
-    print Fore.YELLOW + Style.BRIGHT + \
-        'Script Name'.ljust(23) + 'Project Name'.ljust(21) + 'Module Name'
-    print '-' * 80
-    for entry in pkg_resources.iter_entry_points('console_scripts'):
+    print(Fore.YELLOW + Style.BRIGHT +
+        'Script Name'.ljust(23) + 'Project Name'.ljust(21) + 'Module Name')
+    print('-' * 80)
+    for entry in iter_entry_points('console_scripts'):
         if(filt):
             if filt.lower() not in entry.name.lower():
                 continue 
 
-        print Fore.GREEN + Style.BRIGHT + entry.name.ljust(22),
-        print Fore.WHITE + Style.NORMAL + str(entry.dist).ljust(20),
-        print Fore.BLUE + Style.BRIGHT + entry.module_name,
-        print Fore.BLUE + Style.NORMAL + '(' + entry.attrs[0] + ')'
+        print(Fore.GREEN + Style.BRIGHT + entry.name.ljust(22), end=' ')
+        print(Fore.WHITE + Style.NORMAL + str(entry.dist).ljust(20), end=' ')
+        print(Fore.BLUE + Style.BRIGHT + entry.module_name, end=' ')
+        print(Fore.BLUE + Style.NORMAL + '(' + entry.attrs[0] + ')')
 
 def run_main():
     '''Stallion - Python List Packages (PLP)

@@ -10,6 +10,9 @@ install_requirements = [
         'jinja2>=2.6',
         'docopt>=0.6.1',
         'colorama>=0.2.5',
+        'requests>=2.25.0',
+        'importlib_metadata>=3.6',
+        'packaging>=20.0',
 ]
 
 # Try to import json, only present as std module

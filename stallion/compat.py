@@ -3,6 +3,7 @@ Compatibility layer for Stallion.
 Makes modern Python packaging work with legacy Stallion templates and code.
 """
 import sys
+from typing import Any, Dict, List, Optional, Iterator
 
 try:
     from importlib import metadata
@@ -88,24 +89,37 @@ class DistributionWrapper:
 
         return []
 
-    def as_requirement(self):
-        """Legacy method: return requirement string"""
+    def as_requirement(self) -> str:
+        """Legacy method: return requirement string.
+        
+        :return: Requirement string like 'package==1.0.0'
+        """
         return f"{self.project_name}=={self.version}"
 
-    def requires(self, extras=None):
-        """Legacy method: get requirements"""
+    def requires(self, extras: Optional[List[str]] = None) -> List[str]:
+        """Legacy method: get requirements.
+        
+        :param extras: Optional list of extras to include
+        :return: List of requirement strings
+        """
         if hasattr(self._dist, 'requires') and self._dist.requires:
             return [str(req) for req in self._dist.requires]
         return []
 
     @property
-    def has_version(self):
-        """Legacy property"""
+    def has_version(self) -> bool:
+        """Legacy property: check if version exists.
+        
+        :return: True if version is set, False otherwise
+        """
         return bool(self.version)
 
     @property
-    def parsed_version(self):
-        """Legacy property: parsed version object"""
+    def parsed_version(self) -> Any:
+        """Legacy property: parsed version object.
+        
+        :return: Parsed version object supporting comparisons
+        """
         try:
             return version.parse(self.version)
         except:
@@ -118,9 +132,17 @@ class DistributionWrapper:
 
 
 class EntryPointWrapper:
-    """Makes modern EntryPoint objects behave like legacy ones"""
+    """Makes modern EntryPoint objects behave like legacy ones.
+    
+    Provides backward compatibility for entry point access patterns
+    used by Stallion.
+    """
 
-    def __init__(self, modern_ep):
+    def __init__(self, modern_ep: Any) -> None:
+        """Initialize wrapper around a modern entry point.
+        
+        :param modern_ep: An EntryPoint object from importlib.metadata
+        """
         self._ep = modern_ep
         self.name = getattr(modern_ep, 'name', '')
         self.module_name = getattr(modern_ep, 'module', '')
@@ -131,8 +153,12 @@ class EntryPointWrapper:
     def __getattr__(self, name):
         return getattr(self._ep, name)
 
-    def load(self, require=True, *args, **kwargs):
-        """Legacy method: load the entry point"""
+    def load(self, require: bool = True, *args: Any, **kwargs: Any) -> Optional[Any]:
+        """Legacy method: load the entry point.
+        
+        :param require: Whether to require dependencies (ignored)
+        :return: The loaded entry point object or None on error
+        """
         try:
             return self._ep.load()
         except Exception as e:
@@ -141,19 +167,28 @@ class EntryPointWrapper:
 
 
 class WorkingSetWrapper:
-    """Makes the working set of distributions compatible"""
+    """Makes the working set of distributions compatible.
+    
+    Provides a lazy-loading wrapper around the set of all installed
+    Python distributions, with legacy API compatibility.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize an empty working set wrapper."""
         self._distributions = None
         self._by_key = {}
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[DistributionWrapper]:
         return iter(self._get_distributions())
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._get_distributions())
 
-    def _get_distributions(self):
+    def _get_distributions(self) -> List[DistributionWrapper]:
+        """Get all distributions, loading them if necessary.
+        
+        :return: List of wrapped distribution objects
+        """
         if self._distributions is None:
             self._distributions = []
             self._by_key = {}
@@ -174,12 +209,22 @@ class WorkingSetWrapper:
 
         return self._distributions
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> DistributionWrapper:
+        """Get distribution by key (lowercase name).
+        
+        :param key: Distribution key (lowercase name)
+        :return: Wrapped distribution object
+        :raises KeyError: If distribution not found
+        """
         self._get_distributions()  # Ensure loaded
         return self._by_key[key]
 
-    def find(self, req):
-        """Legacy method: find distribution by requirement"""
+    def find(self, req: str) -> Optional[DistributionWrapper]:
+        """Legacy method: find distribution by requirement.
+        
+        :param req: Package name or requirement string
+        :return: Distribution if found, None otherwise
+        """
         self._get_distributions()
         # Simple implementation - could be enhanced
         for dist in self._distributions:
@@ -189,11 +234,16 @@ class WorkingSetWrapper:
 
 
 # Global working set instance
-working_set = WorkingSetWrapper()
+working_set: WorkingSetWrapper = WorkingSetWrapper()
 
 
-def get_distribution(name):
-    """Get a distribution with full legacy compatibility"""
+def get_distribution(name: str) -> DistributionWrapper:
+    """Get a distribution with full legacy compatibility.
+    
+    :param name: Package name (case-insensitive)
+    :return: Wrapped distribution object
+    :raises: PackageNotFoundError if distribution not found
+    """
     try:
         raw_dist = metadata.distribution(name)
     except metadata.PackageNotFoundError:
@@ -212,8 +262,13 @@ def get_distribution(name):
     return DistributionWrapper(raw_dist)
 
 
-def iter_entry_points(group=None, name=None):
-    """Legacy-compatible entry point iterator"""
+def iter_entry_points(group: Optional[str] = None, name: Optional[str] = None) -> List[EntryPointWrapper]:
+    """Legacy-compatible entry point iterator.
+    
+    :param group: Optional group name to filter by (e.g., 'console_scripts')
+    :param name: Optional entry point name to filter by
+    :return: List of wrapped entry point objects
+    """
     results = []
 
     for dist in working_set:
@@ -235,8 +290,12 @@ def iter_entry_points(group=None, name=None):
     return results
 
 
-def parse_version(version_string):
-    """Legacy-compatible version parsing"""
+def parse_version(version_string: str) -> Any:
+    """Legacy-compatible version parsing.
+    
+    :param version_string: Version string to parse (e.g., '1.2.3')
+    :return: Parsed version object that supports comparison
+    """
     try:
         return version.parse(version_string)
     except:

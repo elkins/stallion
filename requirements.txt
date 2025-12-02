@@ -4,5 +4,5 @@ docutils~=0.22.3
 docopt~=0.6.2
 colorama~=0.4.6
 importlib_metadata~=8.7.0
-importlib_metadata~=8.7.0
 packaging~=25.0
+requests~=2.32.3

@@ -12,11 +12,12 @@ import warnings
 
 import requests
 
-# Suppress pkg_resources and other deprecation warnings
-warnings.filterwarnings('ignore', category=UserWarning, message='.*pkg_resources is deprecated.*')
-warnings.filterwarnings('ignore', category=DeprecationWarning)
+# Suppress only specific deprecation warnings we can't control
+warnings.filterwarnings('ignore', category=DeprecationWarning, module='pkg_resources')
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
 from optparse import OptionParser
+from typing import Dict, List, Any, Optional, Union
 
 try:
     from importlib import reload
@@ -46,6 +47,9 @@ from stallion import metadata
 
 app = Flask(__name__)
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 # Change from XML-RPC to base URL
 PYPI_BASE_URL = 'https://pypi.org'
 
@@ -55,7 +59,7 @@ DIST_PYPI_CACHE = set()
 
 class Crumb(object):
     """ Represents each level on the bootstrap breadcrumb. """
-    def __init__(self, title, href='#'):
+    def __init__(self, title: str, href: str = '#') -> None:
         """ Instatiates a new breadcrum level.
 
         :param title: the title
@@ -65,17 +69,17 @@ class Crumb(object):
         self.href = href
 
 
-def get_shared_data():
+def get_shared_data() -> Dict[str, Any]:
     """ Returns a new dictionary with the shared-data between different
     Stallion views (ie. a list of distribution packages).
 
     :rtype: dict
     :return: the dictionary with the shared data.
     """
-    print("DEBUG: Building shared data using compatibility layer")
+    logger.debug("Building shared data using compatibility layer")
     try:
         distributions = list(working_set)
-        print(f"DEBUG: Found {len(distributions)} distributions in working set")
+        logger.debug(f"Found {len(distributions)} distributions in working set")
 
         shared_data = {
             'pypi_update_cache': DIST_PYPI_CACHE,
@@ -83,7 +87,7 @@ def get_shared_data():
         }
         return shared_data
     except Exception as e:
-        print(f"DEBUG: Error building shared data: {e}")
+        logger.error(f"Error building shared data: {e}")
         # Return minimal shared data on error
         return {
             'pypi_update_cache': set(),
@@ -93,7 +97,7 @@ def get_shared_data():
 
 def get_pypi_proxy():
     """Legacy function - kept for compatibility but not used"""
-    print("DEBUG: XML-RPC proxy requested but deprecated")
+    logger.warning("XML-RPC proxy requested but deprecated")
     # Return a dummy object that won't crash if called
     class DummyProxy:
         def package_releases(self, *args, **kwargs):
@@ -103,20 +107,24 @@ def get_pypi_proxy():
     return DummyProxy()
 
 
-def get_pypi_releases(dist_name):
-    """Modern replacement using PyPI JSON API instead of deprecated XML-RPC"""
-    print(f"DEBUG: Getting PyPI releases for {dist_name} using JSON API")
+def get_pypi_releases(dist_name: str) -> List[str]:
+    """Modern replacement using PyPI JSON API instead of deprecated XML-RPC
+    
+    :param dist_name: The package name to query
+    :return: List of release versions, sorted newest first
+    """
+    logger.debug(f"Getting PyPI releases for {dist_name} using JSON API")
 
     try:
-        # Use PyPI's JSON API
+        # Use PyPI's JSON API with timeout
         url = f"https://pypi.org/pypi/{dist_name}/json"
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
 
         if response.status_code == 404:
-            print(f"DEBUG: Package {dist_name} not found on PyPI")
+            logger.info(f"Package {dist_name} not found on PyPI")
             return []
         elif response.status_code != 200:
-            print(f"DEBUG: PyPI API error for {dist_name}: {response.status_code}")
+            logger.warning(f"PyPI API error for {dist_name}: {response.status_code}")
             return []
 
         data = response.json()
@@ -131,22 +139,33 @@ def get_pypi_releases(dist_name):
 
         if stable_releases:
             stable_releases.sort(key=lambda v: parse_version(v), reverse=True)
-            print(f"DEBUG: Found {len(stable_releases)} stable releases for {dist_name}, latest: {stable_releases[0]}")
+            logger.debug(f"Found {len(stable_releases)} stable releases for {dist_name}, latest: {stable_releases[0]}")
             return stable_releases
         else:
             # Fallback to all releases if no stable ones found
             releases.sort(key=lambda v: parse_version(v), reverse=True)
-            print(f"DEBUG: Found {len(releases)} releases for {dist_name}, latest: {releases[0]}")
+            logger.debug(f"Found {len(releases)} releases for {dist_name}, latest: {releases[0]}")
             return releases
 
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout getting PyPI releases for {dist_name}")
+        return []
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error getting PyPI releases for {dist_name}: {e}")
+        return []
     except Exception as e:
-        print(f"DEBUG: Error getting PyPI releases for {dist_name}: {e}")
+        logger.error(f"Error getting PyPI releases for {dist_name}: {e}")
         return []
 
 
-def get_pypi_search(spec, operator='or'):
-    """Modern replacement using PyPI JSON search API"""
-    print(f"DEBUG: Searching PyPI with spec: {spec}")
+def get_pypi_search(spec: Union[str, Dict[str, str]], operator: str = 'or') -> List[Dict[str, Any]]:
+    """Modern replacement using PyPI JSON search API
+    
+    :param spec: Search specification (dict or string)
+    :param operator: Search operator (not used with JSON API)
+    :return: List of search results
+    """
+    logger.debug(f"Searching PyPI with spec: {spec}")
 
     try:
         # PyPI's JSON search API
@@ -156,9 +175,9 @@ def get_pypi_search(spec, operator='or'):
             'format': 'json'
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=10)
         if response.status_code != 200:
-            print(f"DEBUG: PyPI search API error: {response.status_code}")
+            logger.warning(f"PyPI search API error: {response.status_code}")
             return []
 
         data = response.json()
@@ -173,11 +192,17 @@ def get_pypi_search(spec, operator='or'):
             })
 
         results.sort(key=lambda v: v['_pypi_ordering'], reverse=True)
-        print(f"DEBUG: Found {len(results)} search results")
+        logger.debug(f"Found {len(results)} search results")
         return results
 
+    except requests.exceptions.Timeout:
+        logger.error("Timeout searching PyPI")
+        return []
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error searching PyPI: {e}")
+        return []
     except Exception as e:
-        print(f"DEBUG: Error searching PyPI: {e}")
+        logger.error(f"Error searching PyPI: {e}")
         return []
 
 @app.route('/pypi/check_update/<dist_name>')
@@ -188,7 +213,7 @@ def check_pypi_update(dist_name):
     :rtype: json
     :return: json with the attribute "has_update"
     """
-    print(f"DEBUG: Checking update for {dist_name}")
+    logger.debug(f"Checking update for {dist_name}")
     try:
         pkg_dist = get_distribution(dist_name)
         pkg_dist_version = pkg_dist.version
@@ -200,7 +225,7 @@ def check_pypi_update(dist_name):
 
             if pypi_last_version > current_version:
                 DIST_PYPI_CACHE.add(dist_name.lower())
-                print(f"DEBUG: Update available for {dist_name}: {pypi_rel[0]} > {pkg_dist_version}")
+                logger.info(f"Update available for {dist_name}: {pypi_rel[0]} > {pkg_dist_version}")
                 return jsonify({"has_update": 1})
 
         try:
@@ -208,10 +233,10 @@ def check_pypi_update(dist_name):
         except KeyError:
             pass
 
-        print(f"DEBUG: No update for {dist_name}")
+        logger.debug(f"No update for {dist_name}")
         return jsonify({"has_update": 0})
     except Exception as e:
-        print(f"DEBUG: Error checking update for {dist_name}: {e}")
+        logger.error(f"Error checking update for {dist_name}: {e}")
         return jsonify({"has_update": 0, "error": str(e)})
 
 
@@ -222,7 +247,7 @@ def releases(dist_name):
 
     :param dist_name: the package name (distribution name).
     """
-    print(f"DEBUG: Showing releases for {dist_name}")
+    logger.debug(f"Showing releases for {dist_name}")
     try:
         pkg_dist = get_distribution(dist_name)
 
@@ -251,17 +276,17 @@ def releases(dist_name):
                 except KeyError:
                     pass
 
-        print(f"DEBUG: Successfully prepared release data for {dist_name}")
+        logger.debug(f"Successfully prepared release data for {dist_name}")
         return render_template('pypi_update.html', **data)
     except Exception as e:
-        print(f"DEBUG: Error in releases for {dist_name}: {e}")
+        logger.error(f"Error in releases for {dist_name}: {e}")
         return f"Error loading releases for {dist_name}: {e}", 500
 
 
 @app.route('/')
 def index():
     """ The main Flask entry-point (/) for the Stallion server. """
-    print("DEBUG: Rendering index page")
+    logger.debug("Rendering index page")
     try:
         data = {'breadpath': [Crumb('Main')]}
 
@@ -285,17 +310,17 @@ def index():
 
         data['system_information'] = sys_info
 
-        print("DEBUG: Successfully rendered index page")
+        logger.debug("Successfully rendered index page")
         return render_template('system_information.html', **data)
     except Exception as e:
-        print(f"DEBUG: Error rendering index page: {e}")
+        logger.error(f"Error rendering index page: {e}")
         return f"Error loading index: {e}", 500
 
 
 @app.route('/console_scripts')
 def console_scripts():
     """ Entry point for the global console scripts """
-    print("DEBUG: Rendering console scripts page")
+    logger.debug("Rendering console scripts page")
     try:
         data = {}
         data.update(get_shared_data())
@@ -306,17 +331,17 @@ def console_scripts():
         entry_console = list(iter_entry_points('console_scripts'))
         data['scripts'] = entry_console
 
-        print(f"DEBUG: Found {len(entry_console)} console scripts")
+        logger.debug(f"Found {len(entry_console)} console scripts")
         return render_template('console_scripts.html', **data)
     except Exception as e:
-        print(f"DEBUG: Error rendering console scripts: {e}")
+        logger.error(f"Error rendering console scripts: {e}")
         return f"Error loading console scripts: {e}", 500
 
 
 @app.route('/about')
 def about():
     """ The About entry-point (/about) for the Stallion server. """
-    print("DEBUG: Rendering about page")
+    logger.debug("Rendering about page")
     try:
         data = {}
         data.update(get_shared_data())
@@ -327,10 +352,10 @@ def about():
         data['author'] = stallion.__author__
         data['author_url'] = stallion.__author_url__
 
-        print("DEBUG: Successfully rendered about page")
+        logger.debug("Successfully rendered about page")
         return render_template('about.html', **data)
     except Exception as e:
-        print(f"DEBUG: Error rendering about page: {e}")
+        logger.error(f"Error rendering about page: {e}")
         return f"Error loading about page: {e}", 500
 
 
@@ -341,11 +366,11 @@ def distribution(dist_name=None):
 
     :param dist_name: the package name
     """
-    print(f"DEBUG: Rendering distribution page for {dist_name}")
+    logger.debug(f"Rendering distribution page for {dist_name}")
     try:
         # This now uses the compatibility layer - returns legacy-compatible object
         pkg_dist = get_distribution(dist_name)
-        print(f"DEBUG: Retrieved distribution: {pkg_dist.project_name} {pkg_dist.version}")
+        logger.debug(f"Retrieved distribution: {pkg_dist.project_name} {pkg_dist.version}")
 
         data = {}
         data.update(get_shared_data())
@@ -362,14 +387,14 @@ def distribution(dist_name=None):
         }
 
         # Use original metadata parsing - compatibility layer makes this work
-        print(f"DEBUG: Reading metadata for {dist_name}")
+        logger.debug(f"Reading metadata for {dist_name}")
         try:
             pkg_metadata = pkg_dist.get_metadata(metadata.METADATA_NAME)
             parsed, key_known = metadata.parse_metadata(pkg_metadata)
             distinfo = metadata.metadata_to_dict(parsed, key_known)
-            print(f"DEBUG: Successfully parsed metadata for {dist_name}")
+            logger.debug(f"Successfully parsed metadata for {dist_name}")
         except Exception as e:
-            print(f"DEBUG: Error parsing metadata for {dist_name}: {e}")
+            logger.error(f"Error parsing metadata for {dist_name}: {e}")
             # Fallback to basic info
             distinfo = {
                 'Name': pkg_dist.project_name,
@@ -382,32 +407,30 @@ def distribution(dist_name=None):
         try:
             description = distinfo.get('Description', '')
             if description:
-                print(f"DEBUG: Rendering description for {dist_name} (length: {len(description)})")
+                logger.debug(f"Rendering description for {dist_name} (length: {len(description)})")
                 parts = publish_parts(source=description,
                                       writer_name='html',
                                       settings_overrides=settings_overrides)
         except Exception as e:
-            print(f"DEBUG: Error rendering description for {dist_name}: {e}")
+            logger.warning(f"Error rendering description for {dist_name}: {e}")
 
         data['distinfo'] = distinfo
 
         # Use legacy-compatible entry map method
         data['entry_map'] = pkg_dist.get_entry_map()
-        print(f"DEBUG: Found {sum(len(eps) for eps in data['entry_map'].values())} entry points across {len(data['entry_map'])} groups")
+        logger.debug(f"Found {sum(len(eps) for eps in data['entry_map'].values())} entry points across {len(data['entry_map'])} groups")
 
         if parts is not None:
             data['description_render'] = parts['body']
-            print(f"DEBUG: Successfully rendered description for {dist_name}")
+            logger.debug(f"Successfully rendered description for {dist_name}")
         else:
-            print(f"DEBUG: No description rendered for {dist_name}")
+            logger.debug(f"No description rendered for {dist_name}")
 
-        print(f"DEBUG: Successfully rendered distribution page for {dist_name}")
+        logger.debug(f"Successfully rendered distribution page for {dist_name}")
         return render_template('distribution.html', **data)
 
     except Exception as e:
-        print(f"DEBUG: Error rendering distribution page for {dist_name}: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error rendering distribution page for {dist_name}: {e}", exc_info=True)
         return f"Error loading distribution {dist_name}: {e}", 500
 
 
@@ -416,8 +439,6 @@ def run_main():
 
     print('Stallion %s - Python Package Manager' % (stallion.__version__,))
     print('By %s 2013\n' % (stallion.__author__,))
-    print('DEBUG: Starting Stallion with Python %s' % sys.version)
-    print('DEBUG: Using compatibility layer for package management')
 
     parser = OptionParser()
 
@@ -463,18 +484,28 @@ def run_main():
         print(" * Reloader: %s" % options.reloader)
         werk_log = logging.getLogger('werkzeug')
         werk_log.setLevel(logging.WARNING)
+    
+    # Configure application logger based on debug/verbose settings
+    if options.debug or options.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+        logger.setLevel(logging.INFO)
 
     if options.web_browser:
         import webbrowser
-        print("DEBUG: Opening web browser")
+        logger.info("Opening web browser")
         webbrowser.open('http://%s:%s/' % (options.host, options.port))
 
-    print("DEBUG: Starting Flask application with compatibility layer...")
+    logger.info("Starting Stallion with Python %s" % sys.version.split()[0])
+    logger.info("Using compatibility layer for package management")
+    
     try:
         app.run(debug=options.debug, host=options.host, port=int(options.port),
                 use_evalex=options.evalx, use_reloader=options.reloader)
     except Exception as e:
-        print(f"DEBUG: Error starting Flask application: {e}")
+        logger.error(f"Error starting Flask application: {e}", exc_info=True)
         raise
 
 if __name__ == '__main__':
