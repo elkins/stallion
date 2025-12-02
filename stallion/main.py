@@ -16,8 +16,10 @@ import requests
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='pkg_resources')
 warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
-from optparse import OptionParser
+import argparse
 from typing import Dict, List, Any, Optional, Union
+from functools import lru_cache
+from datetime import datetime, timedelta
 
 try:
     from importlib import reload
@@ -107,8 +109,11 @@ def get_pypi_proxy():
     return DummyProxy()
 
 
+@lru_cache(maxsize=256)
 def get_pypi_releases(dist_name: str) -> List[str]:
     """Modern replacement using PyPI JSON API instead of deprecated XML-RPC
+    
+    Uses LRU cache to avoid redundant API calls within the same session.
     
     :param dist_name: The package name to query
     :return: List of release versions, sorted newest first
@@ -158,10 +163,14 @@ def get_pypi_releases(dist_name: str) -> List[str]:
         return []
 
 
-def get_pypi_search(spec: Union[str, Dict[str, str]], operator: str = 'or') -> List[Dict[str, Any]]:
+@lru_cache(maxsize=128)
+def get_pypi_search(spec: str, operator: str = 'or') -> List[Dict[str, Any]]:
     """Modern replacement using PyPI JSON search API
     
-    :param spec: Search specification (dict or string)
+    Uses LRU cache to avoid redundant search queries.
+    Note: spec must be string for cache to work (dict not hashable).
+    
+    :param spec: Search specification string
     :param operator: Search operator (not used with JSON API)
     :return: List of search results
     """
@@ -171,7 +180,7 @@ def get_pypi_search(spec: Union[str, Dict[str, str]], operator: str = 'or') -> L
         # PyPI's JSON search API
         url = "https://pypi.org/search/"
         params = {
-            'q': spec.get('name', '') if isinstance(spec, dict) else spec,
+            'q': spec,
             'format': 'json'
         }
 
@@ -440,43 +449,60 @@ def run_main():
     print('Stallion %s - Python Package Manager' % (stallion.__version__,))
     print('By %s 2013\n' % (stallion.__author__,))
 
-    parser = OptionParser()
+    parser = argparse.ArgumentParser(
+        prog='stallion',
+        description='Stallion - Python Package Manager',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    parser.add_option('-s', '--host', dest='host',
-                    help='The hostname to listen on, ' \
-                         'set to \'0.0.0.0\' to have the '
-                         'server available externally as well. '
-                         'Default is \'127.0.0.1\' (localhost only).',
-                    metavar="HOST", default='127.0.0.1')
+    parser.add_argument('-s', '--host',
+                        dest='host',
+                        default='127.0.0.1',
+                        metavar='HOST',
+                        help="The hostname to listen on. Set to '0.0.0.0' to have the "
+                             "server available externally. Default is '127.0.0.1' (localhost only).")
 
-    parser.add_option('-d', '--debug', action='store_true',
-                  help='Start Stallion in Debug mode (useful to report bugs).',
-                  dest='debug', default=False)
+    parser.add_argument('-p', '--port',
+                        dest='port',
+                        default='5000',
+                        metavar='PORT',
+                        help="The port to listen on. Default is 5000.")
 
-    parser.add_option('-r', '--reloader', action='store_true',
-                  help='Uses the reloader.', dest='reloader', default=False)
+    parser.add_argument('-d', '--debug',
+                        action='store_true',
+                        dest='debug',
+                        default=False,
+                        help='Start Stallion in debug mode (useful to report bugs).')
 
-    parser.add_option('-i', '--interactive', action='store_true',
-                  help='Enable the interactive interpreter' \
-                       ' for debugging (useful to debug errors).',
-                  dest='evalx', default=False)
+    parser.add_argument('-r', '--reloader',
+                        action='store_true',
+                        dest='reloader',
+                        default=False,
+                        help='Enable auto-reloader for development.')
 
-    parser.add_option('-p', '--port', dest='port',
-                    help='The port to listen on. ' \
-                         'Default is the port \'5000\'.',
-                    metavar="PORT", default='5000')
+    parser.add_argument('-i', '--interactive',
+                        action='store_true',
+                        dest='evalx',
+                        default=False,
+                        help='Enable the interactive interpreter for debugging.')
 
-    parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
-                    help='Turn on verbose messages (show HTTP requests).' \
-                         ' Default is False.',
-                    default=False)
+    parser.add_argument('-v', '--verbose',
+                        action='store_true',
+                        dest='verbose',
+                        default=False,
+                        help='Turn on verbose messages (show HTTP requests).')
 
-    parser.add_option('-w', '--web-browser', dest='web_browser', action='store_true',
-                    help='Open a web browser to show Stallion.' \
-                         ' Default is False.',
-                    default=False)
+    parser.add_argument('-w', '--web-browser',
+                        action='store_true',
+                        dest='web_browser',
+                        default=False,
+                        help='Open a web browser to show Stallion.')
 
-    (options, args) = parser.parse_args()
+    parser.add_argument('--version',
+                        action='version',
+                        version=f'Stallion {stallion.__version__}')
+
+    options = parser.parse_args()
 
     if not options.verbose:
         print(" * Running on http://%s:%s/" % (options.host, options.port))
@@ -500,6 +526,7 @@ def run_main():
 
     logger.info("Starting Stallion with Python %s" % sys.version.split()[0])
     logger.info("Using compatibility layer for package management")
+    logger.info(f"PyPI API cache enabled (max 256 packages, 128 searches)")
     
     try:
         app.run(debug=options.debug, host=options.host, port=int(options.port),
