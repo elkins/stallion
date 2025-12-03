@@ -20,6 +20,8 @@ import argparse
 from typing import Dict, List, Any, Optional, Union
 from functools import lru_cache
 from datetime import datetime, timedelta
+import time
+import threading
 
 try:
     from importlib import reload
@@ -57,6 +59,47 @@ PYPI_BASE_URL = 'https://pypi.org'
 
 # This is a cache with flags to show if a distribution has an update available
 DIST_PYPI_CACHE = set()
+
+
+# Rate limiter to avoid overwhelming PyPI
+class RateLimiter:
+    """Simple rate limiter using token bucket algorithm.
+    
+    Ensures we don't make more than max_calls requests per period seconds.
+    """
+    def __init__(self, max_calls: int = 10, period: float = 1.0):
+        """
+        :param max_calls: Maximum number of calls allowed per period
+        :param period: Time period in seconds
+        """
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = []
+        self.lock = threading.Lock()
+    
+    def wait_if_needed(self) -> None:
+        """Block if we've exceeded the rate limit."""
+        with self.lock:
+            now = time.time()
+            # Remove calls outside the current period
+            self.calls = [call_time for call_time in self.calls if now - call_time < self.period]
+            
+            if len(self.calls) >= self.max_calls:
+                # Calculate how long to wait
+                sleep_time = self.period - (now - self.calls[0])
+                if sleep_time > 0:
+                    logger.debug(f"Rate limit reached, sleeping for {sleep_time:.2f}s")
+                    time.sleep(sleep_time)
+                    # Clean up old calls after sleeping
+                    now = time.time()
+                    self.calls = [call_time for call_time in self.calls if now - call_time < self.period]
+            
+            # Record this call
+            self.calls.append(time.time())
+
+
+# Global rate limiter: 10 requests per second (conservative for PyPI)
+pypi_rate_limiter = RateLimiter(max_calls=10, period=1.0)
 
 
 class Crumb(object):
@@ -114,6 +157,7 @@ def get_pypi_releases(dist_name: str) -> List[str]:
     """Modern replacement using PyPI JSON API instead of deprecated XML-RPC
     
     Uses LRU cache to avoid redundant API calls within the same session.
+    Includes rate limiting to avoid overwhelming PyPI.
     
     :param dist_name: The package name to query
     :return: List of release versions, sorted newest first
@@ -121,6 +165,9 @@ def get_pypi_releases(dist_name: str) -> List[str]:
     logger.debug(f"Getting PyPI releases for {dist_name} using JSON API")
 
     try:
+        # Rate limit API calls
+        pypi_rate_limiter.wait_if_needed()
+        
         # Use PyPI's JSON API with timeout
         url = f"https://pypi.org/pypi/{dist_name}/json"
         response = requests.get(url, timeout=10)
@@ -168,6 +215,7 @@ def get_pypi_search(spec: str, operator: str = 'or') -> List[Dict[str, Any]]:
     """Modern replacement using PyPI JSON search API
     
     Uses LRU cache to avoid redundant search queries.
+    Includes rate limiting to avoid overwhelming PyPI.
     Note: spec must be string for cache to work (dict not hashable).
     
     :param spec: Search specification string
@@ -177,6 +225,9 @@ def get_pypi_search(spec: str, operator: str = 'or') -> List[Dict[str, Any]]:
     logger.debug(f"Searching PyPI with spec: {spec}")
 
     try:
+        # Rate limit API calls
+        pypi_rate_limiter.wait_if_needed()
+        
         # PyPI's JSON search API
         url = "https://pypi.org/search/"
         params = {
